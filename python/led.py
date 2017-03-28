@@ -58,29 +58,23 @@ def _update_esp8266():
         b (0 to 255): Blue value of LED
     """
     global pixels, _prev_pixels
-    # Truncate values and cast to integer
-    pixels = np.clip(pixels, 0, 255).astype(int)
-    # Optionally apply gamma correc tio
-    p = _gamma[pixels] if config.SOFTWARE_GAMMA_CORRECTION else np.copy(pixels)
-    MAX_PIXELS_PER_PACKET = 126
-    # Pixel indices
-    idx = range(pixels.shape[1])
-    idx = [i for i in idx if not np.array_equal(p[:, i], _prev_pixels[:, i])]
-    n_packets = len(idx) // MAX_PIXELS_PER_PACKET + 1
-    idx = np.array_split(idx, n_packets)
-    for packet_indices in idx:
-        m = '' if _is_python_2 else []
-        for i in packet_indices:
-            if _is_python_2:
-                m += chr(i) + chr(p[0][i]) + chr(p[1][i]) + chr(p[2][i])
-            else:
-                m.append(i)  # Index of pixel to change
-                m.append(p[0][i])  # Pixel red value
-                m.append(p[1][i])  # Pixel green value
-                m.append(p[2][i])  # Pixel blue value
-        m = m if _is_python_2 else bytes(m)
-        _sock.sendto(m, (config.UDP_IP, config.UDP_PORT))
-    _prev_pixels = np.copy(p)
+    endcap = np.asarray([0]).astype(np.uint8).ravel().tostring()
+    message = pixels.T.clip(0, 255).astype(np.uint8).ravel().tostring()
+    x = 1
+    b = 0
+    actnmsg = x.to_bytes(1, byteorder='big') + \
+            b.to_bytes(2, byteorder='big') + message
+    actnmsg1 = x.to_bytes(1, byteorder='big') + \
+            b.to_bytes(2, byteorder='big') + message[69:]
+    for IP in ['192.168.1.10', '192.168.1.9', '192.168.1.11']:
+        if IP == '192.168.1.10':
+            _sock.sendto(actnmsg1, (IP, config.UDP_PORT))
+        else:
+            _sock.sendto(actnmsg, (IP, config.UDP_PORT))
+
+        _sock.sendto(endcap, (IP, config.UDP_PORT))
+
+    _prev_pixels = np.copy(pixels)
 
 
 def _update_pi():
@@ -113,7 +107,7 @@ def _update_blinkstick():
         This function updates the LED strip with new values.
     """
     global pixels
-    
+
     # Truncate values and cast to integer
     pixels = np.clip(pixels, 0, 255).astype(int)
     # Optional gamma correction
