@@ -1,29 +1,39 @@
-import time
+import queue
 import numpy as np
-import pyaudio
+import sounddevice as sd
 import config
+import time
+q = queue.Queue()
+
+
+def audio_callback(indata, frames, time, status):
+    if status:
+        print(status)
+    q.put(np.squeeze(indata))
 
 
 def start_stream(callback):
-    p = pyaudio.PyAudio()
+    temp_fps = 0
+    temp_fps_time = time.time()
     frames_per_buffer = int(config.MIC_RATE / config.FPS)
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=1,
-                    rate=config.MIC_RATE,
-                    input=True,
-                    frames_per_buffer=frames_per_buffer)
-    overflows = 0
-    prev_ovf_time = time.time()
-    while True:
-        try:
-            y = np.fromstring(stream.read(frames_per_buffer), dtype=np.int16)
-            y = y.astype(np.float32)
-            callback(y)
-        except IOError:
-            overflows += 1
-            if time.time() > prev_ovf_time + 1:
-                prev_ovf_time = time.time()
-                print('Audio buffer has overflowed {} times'.format(overflows))
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
+
+    stream = sd.InputStream(channels=1,
+                            samplerate=config.MIC_RATE,
+                            blocksize=frames_per_buffer,
+                            dtype=np.float32,
+                            callback=audio_callback,
+                            device=12)
+
+    with stream:
+        while True:
+            while True:
+                try:
+                    data = q.get_nowait()
+                except queue.Empty:
+                    break
+                callback(data)
+                temp_fps += 1
+                if time.time() - temp_fps_time > 1:
+                    temp_fps_time = time.time()
+                    print('COOL FPS {:.0f} / {:.0f}'.format(temp_fps, config.FPS))
+                    temp_fps = 0
